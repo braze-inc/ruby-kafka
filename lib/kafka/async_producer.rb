@@ -117,7 +117,12 @@ module Kafka
       end
 
       args = [value, **options.merge(topic: topic)]
-      @queue << [:produce, args]
+
+      begin
+        @queue << [:produce, args]
+      rescue ClosedQueueError
+        raise Kafka::AsyncProducerIsClosed
+      end
 
       @instrumenter.instrument("enqueue_message.async_producer", {
         topic: topic,
@@ -146,14 +151,19 @@ module Kafka
     #
     # @see Kafka::Producer#shutdown
     # @return [nil]
-    def shutdown
+    def shutdown(timeout = nil)
       ensure_threads_running!
 
+      @queue.close
+      @worker.flip_shutdown_latch!
       @timer_thread && @timer_thread.exit
-      @queue << [:shutdown, nil]
-      @worker_thread && @worker_thread.join
 
+      @worker_thread && @worker_thread.join(timeout)
       nil
+    end
+
+    def shutdown?
+      !worker_thread_alive? && !timer_thread_alive?
     end
 
     private
@@ -210,6 +220,11 @@ module Kafka
         @instrumenter = instrumenter
         @logger = TaggedLogger.new(logger)
         @finally = finally
+        @shutdown_latch = false
+      end
+
+      def flip_shutdown_latch!
+        @shutdown_latch = true
       end
 
       def run
@@ -220,7 +235,7 @@ module Kafka
       rescue Exception => e
         @logger.error "Unexpected Kafka error #{e.class}: #{e.message}\n#{e.backtrace.join("\n")}"
         @logger.error "Async producer crashed!"
-        if !@finally.nil?
+        if @finally
           @queue.close
           messages = []
           @queue.size.times do
@@ -240,44 +255,21 @@ module Kafka
 
       def do_loop
         loop do
-          begin
-            operation, payload = @queue.pop
+          if @shutdown_latch
+            shutdown
+            break
+          end
 
-            case operation
-            when :produce
-              produce(payload[0], **payload[1])
-              deliver_messages if threshold_reached?
-            when :deliver_messages
-              deliver_messages
-            when :shutdown
-              begin
-                # Deliver any pending messages first.
-                @producer.deliver_messages
-              rescue Error => e
-                @logger.error("Failed to deliver messages during shutdown: #{e.message}")
+          operation, payload = @queue.pop
 
-                @instrumenter.instrument("drop_messages.async_producer", {
-                  message_count: @producer.buffer_size + @queue.size,
-                })
-
-                if !@finally.nil?
-                  @queue.close
-                  messages = []
-                  @queue.size.times do
-                    operation, payload = @queue.pop()
-                    if !payload.nil?
-                      messages << payload
-                    end
-                  end
-                  @finally.call(messages)
-                end
-              end
-
-              # Stop the run loop.
-              break
-            else
-              raise "Unknown operation #{operation.inspect}"
-            end
+          case operation
+          when :produce
+            produce(payload[0], **payload[1])
+            deliver_messages if threshold_reached?
+          when :deliver_messages
+            deliver_messages
+          else
+            raise "Unknown operation #{operation.inspect}"
           end
         end
       rescue Kafka::Error => e
@@ -286,6 +278,29 @@ module Kafka
 
         sleep 10
         retry
+      end
+
+      def shutdown
+        # Deliver any pending messages first.
+        @producer.deliver_messages
+      rescue Error => e
+        @logger.error("Failed to deliver messages during shutdown: #{e.message}")
+
+        @instrumenter.instrument("drop_messages.async_producer", {
+          message_count: @producer.buffer_size + @queue.size,
+        })
+
+        if @finally
+          @queue.close
+          messages = []
+          @queue.size.times do
+            operation, payload = @queue.pop()
+            if !payload.nil?
+              messages << payload
+            end
+          end
+          @finally.call(messages)
+        end
       end
 
       def produce(value, **kwargs)
@@ -302,7 +317,9 @@ module Kafka
             retry
           else
             # The message shape is [value, **kwargs] and `finally` should take a list of messages.
-            @finally.call([[value, **kwargs]])
+            if @finally
+              @finally.call([[value, **kwargs]])
+            end
             @logger.error("Failed to asynchronously produce messages due to BufferOverflow")
             @instrumenter.instrument("error.async_producer", { error: e })
           end

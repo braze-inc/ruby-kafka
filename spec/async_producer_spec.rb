@@ -75,6 +75,18 @@ describe Kafka::AsyncProducer do
   end
 
   describe "#shutdown" do
+    it "times out if a timeout is set" do
+      sleep_time = 100
+      allow(sync_producer).to receive(:buffer_size) { 42 }
+      allow(sync_producer).to receive(:deliver_messages) { sleep(sleep_time) }
+
+      start_time = Time.now
+      async_producer.shutdown(0)
+      end_time = Time.now
+
+      expect(end_time - start_time < sleep_time)
+    end
+
     it "delivers buffered messages" do
       async_producer.produce("hello", topic: "greetings")
       async_producer.shutdown
@@ -92,11 +104,17 @@ describe Kafka::AsyncProducer do
       expect(log.string).to include "Failed to deliver messages during shutdown: uh-oh!"
 
       metric = instrumenter.metrics_for("drop_messages.async_producer").first
-      expect(metric.payload[:message_count]).to eq 42
+      expect(metric.payload[:message_count]).to eq 43 # plus the produced message
     end
   end
 
   describe "#produce" do
+    it "raises an exception if trying to produce after shutdown" do
+      async_producer.shutdown
+      expect {
+        async_producer.produce("hello", topic: "greetings")
+      }.to raise_exception(Kafka::AsyncProducerIsClosed)
+    end
     it "delivers buffered messages" do
       async_producer.produce("hello", topic: "greetings")
       sleep 0.2 # wait for worker to call produce
