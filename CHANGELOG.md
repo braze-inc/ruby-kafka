@@ -4,6 +4,10 @@ Changes and additions to the library will be listed here.
 
 ## Unreleased
 
+## 1.5.0
+- Add support for AWS IAM Authentication to an MSK cluster (#907).
+- Added session token to the IAM mechanism; necessary for auth via temporary credentials (#937)
+
 ## 1.4.0
 
 - Refresh a stale cluster's metadata if necessary on `Kafka::Client#deliver_message` (#901).
