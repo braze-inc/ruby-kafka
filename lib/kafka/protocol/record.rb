@@ -17,8 +17,8 @@ module Kafka
       )
         @key = key
         @value = value
-        headers.delete(:app_group_id)
-        @headers = headers
+        @headers = headers.dup
+        @headers.delete(:app_group_id)
         @attributes = attributes
 
         @offset_delta = offset_delta

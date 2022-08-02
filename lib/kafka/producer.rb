@@ -287,7 +287,7 @@ module Kafka
     # @note This will pull messages from buffers instead copying them
     # @return [Array<Array(Object, Hash)>]
     def extract_undelivered_messages!
-      extracted_messages = buffer_messages.map { |message| [message.value, { topic: message.topic }] }
+      extracted_messages = buffer_messages.map { |message| [message.value, { topic: message.topic, app_group_id: message.headers[:app_group_id] }] }
       clear_buffer
       extracted_messages
     end
