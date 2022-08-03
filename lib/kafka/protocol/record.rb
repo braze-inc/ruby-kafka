@@ -18,7 +18,6 @@ module Kafka
         @key = key
         @value = value
         @headers = headers.dup
-        @headers.delete(:app_group_id)
         @attributes = attributes
 
         @offset_delta = offset_delta
@@ -43,6 +42,7 @@ module Kafka
         record_encoder.write_varint_bytes(@value)
 
         record_encoder.write_varint_array(@headers.to_a) do |header_key, header_value|
+          next if header_key == :app_group_id
           record_encoder.write_varint_string(header_key.to_s)
           record_encoder.write_varint_bytes(header_value.to_s)
         end
