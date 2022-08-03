@@ -40,17 +40,17 @@ describe Kafka::Producer do
 
   describe "#extract_undelivered_messages!" do
     it "gets messages from the buffer" do
-      producer.produce('test', topic: 'test')
+      producer.produce('test', topic: 'test', headers: { app_group_id: 'bread' })
       allow(cluster).to receive(:partitions_for).with('test') { [1] }
       producer.send(:assign_partitions!)
       messages = producer.extract_undelivered_messages!
-      expect(messages).to eq([['test', { topic: 'test' }]])
+      expect(messages).to eq([['test', { topic: 'test', app_group_id: 'bread' }]])
     end
 
     it "gets messages from the pending message queue" do
-      producer.produce('test', topic: 'test')
+      producer.produce('test', topic: 'test', headers: { app_group_id: 'banana' })
       messages = producer.extract_undelivered_messages!
-      expect(messages).to eq([['test', { topic: 'test' }]])
+      expect(messages).to eq([['test', { topic: 'test', app_group_id: 'banana' }]])
     end
 
     it "clears buffers afterwards" do

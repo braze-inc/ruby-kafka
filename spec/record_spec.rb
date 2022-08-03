@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+describe Kafka::Protocol::Record do
+  let(:encoded_io) { StringIO.new }
+  let(:encoder) { Kafka::Protocol::Encoder.new(encoded_io) }
+
+  it 'does not encode app_group_id headers' do
+    record = described_class.new(value: 'test', headers: { app_group_id: 'blueberry' })
+    record.encode(encoder)
+    expect(encoded_io.string['blueberry']).to be_nil
+  end
+
+  it 'does encode other headers' do
+    record = described_class.new(value: 'test', headers: { fruit: 'raspberry' })
+    record.encode(encoder)
+    expect(encoded_io.string['raspberry']).to_not be_nil
+  end
+end
