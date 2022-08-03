@@ -17,7 +17,7 @@ module Kafka
       )
         @key = key
         @value = value
-        @headers = headers.dup
+        @headers = headers
         @attributes = attributes
 
         @offset_delta = offset_delta
