@@ -13,7 +13,7 @@ steps:
   env:
   plugins:
   - docker#v3.3.0:
-      image: circleci/ruby:2.5.1-node
+      image: circleci/ruby:2.7.3-node
       workdir: "/buildkite-checkout"
 # - key: kafka-2-4
 #   label: ":circleci: kafka-2.4"
